@@ -7,7 +7,13 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://homefix-client.onrender.com'  // ← your actual frontend URL
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 
