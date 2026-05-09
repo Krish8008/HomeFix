@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
-axios.defaults.baseURL = import.meta.env.VITE_API_URL;
-
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -11,15 +9,25 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    if (token && savedUser) {
-      setUser(JSON.parse(savedUser));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      const savedTech = localStorage.getItem('technicianProfile');
-      if (savedTech) setTechnicianProfile(JSON.parse(savedTech));
+    try {
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('user');
+      
+      if (token && savedUser && savedUser !== 'undefined') {
+        setUser(JSON.parse(savedUser));
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        const savedTech = localStorage.getItem('technicianProfile');
+        if (savedTech && savedTech !== 'undefined') {
+          setTechnicianProfile(JSON.parse(savedTech));
+        }
+      }
+    } catch (err) {
+      console.log('Auth restore error:', err);
+      localStorage.clear();
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   const login = (token, userData, techProfile = null) => {
