@@ -30,6 +30,7 @@ router.post('/create-order', auth, async (req, res) => {
 // Verify payment and update booking
 router.post('/verify', auth, async (req, res) => {
   try {
+    console.log('Verify called:', req.body);
     const {
       razorpay_order_id,
       razorpay_payment_id,

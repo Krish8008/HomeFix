@@ -57,6 +57,7 @@ export default function BookingForm() {
         name: 'HomeFix',
         description: `Booking with ${tech.user?.name}`,
         order_id: orderRes.data.order.id,
+
         handler: async (response) => {
           try {
             // Step 4 — Verify payment signature on backend
@@ -66,8 +67,10 @@ export default function BookingForm() {
               razorpay_signature: response.razorpay_signature,
               bookingId: booking._id,
             });
+            setLoading(false); 
             setSuccess(true);
           } catch {
+            setLoading(false);
             alert('Payment verification failed. Please contact support.');
           }
         },
