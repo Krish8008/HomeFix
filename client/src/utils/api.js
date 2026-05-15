@@ -41,4 +41,9 @@ export const reviewAPI = {
   getByTechnician: (id) => API.get(`/reviews/technician/${id}`),
 };
 
+export const paymentAPI = {
+  createOrder: (data) => API.post('/payment/create-order', data),
+  verify: (data) => API.post('/payment/verify', data),
+};
+
 export default API;

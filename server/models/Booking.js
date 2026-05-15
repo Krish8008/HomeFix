@@ -16,7 +16,19 @@ const bookingSchema = new mongoose.Schema({
   },
   estimatedCost: { type: Number },
   finalCost: { type: Number },
-  paymentStatus: { type: String, enum: ['unpaid', 'paid'], default: 'unpaid' },
+  paymentStatus: {
+  type: String,
+  enum: ['pending', 'paid', 'failed'],
+  default: 'pending',
+  },
+  paymentId: {
+  type: String,
+  default: null,
+},
+orderId: {
+  type: String,
+  default: null,
+},
   notes: { type: String },
   images: [String],
   createdAt: { type: Date, default: Date.now },

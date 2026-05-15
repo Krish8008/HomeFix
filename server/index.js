@@ -7,6 +7,8 @@ require('dotenv').config();
 
 const app = express();
 
+
+
 app.use(cors({
   origin: [
     'http://localhost:5173',
@@ -23,6 +25,7 @@ app.use('/api/services', require('./routes/services'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/technicians', require('./routes/technicians'));
 app.use('/api/reviews', require('./routes/reviews'));
+app.use('/api/payment', require('./routes/payment'));
 
 // MongoDB connection
 const MONGO_URI = process.env.MONGO_URI;

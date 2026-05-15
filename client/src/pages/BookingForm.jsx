@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { technicianAPI, bookingAPI } from '../utils/api';
+import { technicianAPI, bookingAPI, paymentAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 const TIME_SLOTS = [
@@ -29,19 +29,66 @@ export default function BookingForm() {
     technicianAPI.getById(technicianId).then(r => setTech(r.data));
   }, [technicianId]);
 
-  const handleSubmit = async (e) => {
+  const handlePayment = async (e) => {
     e.preventDefault();
+    if (!form.timeSlot) return alert('Please select a time slot');
     setLoading(true);
+
     try {
-      await bookingAPI.create({
+      // Step 1 — Create booking in DB (paymentStatus: pending)
+      const bookingRes = await bookingAPI.create({
         ...form,
         technician: technicianId,
         serviceCategory: tech.serviceCategory,
       });
-      setSuccess(true);
+      const booking = bookingRes.data;
+
+      // Step 2 — Create Razorpay order on backend
+      const orderRes = await paymentAPI.createOrder({
+        amount: tech.hourlyRate,
+        bookingId: booking._id,
+      });
+
+      // Step 3 — Open Razorpay popup
+      const options = {
+        key: process.env.REACT_APP_RAZORPAY_KEY_ID,
+        amount: orderRes.data.order.amount,
+        currency: 'INR',
+        name: 'HomeFix',
+        description: `Booking with ${tech.user?.name}`,
+        order_id: orderRes.data.order.id,
+        handler: async (response) => {
+          try {
+            // Step 4 — Verify payment signature on backend
+            await paymentAPI.verify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              bookingId: booking._id,
+            });
+            setSuccess(true);
+          } catch {
+            alert('Payment verification failed. Please contact support.');
+          }
+        },
+        prefill: {
+          name: user?.name,
+          email: user?.email,
+        },
+        theme: { color: '#FF5C35' },
+        modal: {
+          ondismiss: () => {
+            setLoading(false);
+            alert('Payment cancelled. Your booking is saved but unpaid.');
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+
     } catch (err) {
-      alert(err.response?.data?.message || 'Booking failed');
-    } finally {
+      alert(err.response?.data?.message || 'Booking failed. Please try again.');
       setLoading(false);
     }
   };
@@ -55,7 +102,7 @@ export default function BookingForm() {
       <div style={styles.successCard}>
         <div style={styles.successIcon}>🎉</div>
         <h2 style={styles.successTitle}>Booking Confirmed!</h2>
-        <p style={styles.successText}>Your appointment has been successfully booked. The technician will confirm shortly.</p>
+        <p style={styles.successText}>Payment successful! Your appointment has been booked. The technician will confirm shortly.</p>
         <div style={styles.successBtns}>
           <button className="btn btn-primary" onClick={() => navigate('/my-bookings')}>View My Bookings</button>
           <button className="btn btn-outline" onClick={() => navigate('/')}>Back to Home</button>
@@ -76,7 +123,7 @@ export default function BookingForm() {
       <div className="container">
         <div style={styles.body}>
           <div style={styles.formSection}>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handlePayment}>
               <div style={styles.formCard}>
                 <h3 style={styles.formTitle}>📋 Problem Details</h3>
                 <div className="form-group">
@@ -153,8 +200,24 @@ export default function BookingForm() {
                 </div>
               </div>
 
-              <button type="submit" className="btn btn-primary btn-lg" style={styles.submitBtn} disabled={loading || !form.timeSlot}>
-                {loading ? 'Booking...' : '✅ Confirm Booking'}
+              {/* Payment info box */}
+              <div style={styles.paymentInfo}>
+                <div style={styles.paymentRow}>
+                  <span style={styles.paymentLabel}>💳 Amount to pay now</span>
+                  <span style={styles.paymentAmount}>₹{tech?.hourlyRate || '...'}</span>
+                </div>
+                <p style={styles.paymentNote}>
+                  This is the booking amount. Final cost will be settled after the service.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg"
+                style={styles.submitBtn}
+                disabled={loading || !form.timeSlot}
+              >
+                {loading ? 'Processing...' : `💳 Pay ₹${tech?.hourlyRate || ''} & Confirm Booking`}
               </button>
             </form>
           </div>
@@ -184,7 +247,9 @@ export default function BookingForm() {
                   {form.appointmentDate && (
                     <div style={styles.summaryRow}>
                       <span>Date</span>
-                      <span style={styles.summaryValue}>{new Date(form.appointmentDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      <span style={styles.summaryValue}>
+                        {new Date(form.appointmentDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
                     </div>
                   )}
                   {form.timeSlot && (
@@ -193,6 +258,10 @@ export default function BookingForm() {
                       <span style={styles.summaryValue}>{form.timeSlot}</span>
                     </div>
                   )}
+                  <div style={styles.summaryRow}>
+                    <span>Booking Amount</span>
+                    <span style={{ ...styles.summaryValue, color: '#FF5C35' }}>₹{tech.hourlyRate}</span>
+                  </div>
                 </div>
                 <div style={styles.summaryNote}>
                   💡 Final cost will be determined after the technician assesses the problem.
@@ -231,6 +300,17 @@ const styles = {
     color: '#374151', transition: 'all 0.15s', fontFamily: 'DM Sans, sans-serif',
   },
   timeSlotActive: { background: '#FF5C35', borderColor: '#FF5C35', color: 'white' },
+  paymentInfo: {
+    background: 'white', borderRadius: 16, padding: 20,
+    boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: 20,
+    border: '2px solid #FF5C35',
+  },
+  paymentRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8,
+  },
+  paymentLabel: { fontWeight: 600, fontSize: 15, color: '#1A1A2E' },
+  paymentAmount: { fontWeight: 800, fontSize: 22, color: '#FF5C35', fontFamily: 'Syne, sans-serif' },
+  paymentNote: { color: '#6B7280', fontSize: 13, margin: 0 },
   submitBtn: { width: '100%', justifyContent: 'center' },
   summary: { position: 'sticky', top: 88 },
   summaryCard: {
