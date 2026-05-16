@@ -13,14 +13,17 @@ const razorpay = new Razorpay({
 // Create Razorpay order
 router.post('/create-order', auth, async (req, res) => {
   try {
-    const { amount, bookingId } = req.body;
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
 
+    const { amount, bookingId } = req.body;
     const order = await razorpay.orders.create({
-      amount: amount * 100, // convert to paise
+      amount: amount * 100,
       currency: 'INR',
       receipt: `booking_${bookingId || Date.now()}`,
     });
-
     res.json({ success: true, order });
   } catch (err) {
     res.status(500).json({ message: 'Order creation failed', error: err.message });
