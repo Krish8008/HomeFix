@@ -5,10 +5,6 @@ const crypto = require('crypto');
 const Booking = require('../models/Booking');
 const { auth } = require('../middleware/auth');
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
 
 // Create Razorpay order
 router.post('/create-order', auth, async (req, res) => {
