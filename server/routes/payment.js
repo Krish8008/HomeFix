@@ -33,9 +33,44 @@ router.post('/create-order', auth, async (req, res) => {
 });
 
 // Verify payment and update booking
+// router.post('/verify', auth, async (req, res) => {
+//   try {
+//     console.log('Verify called:', req.body);
+//     const {
+//       razorpay_order_id,
+//       razorpay_payment_id,
+//       razorpay_signature,
+//       bookingId,
+//     } = req.body;
+
+//     // Verify signature
+//     const sign = razorpay_order_id + '|' + razorpay_payment_id;
+//     const expectedSign = crypto
+//       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+//       .update(sign)
+//       .toString('hex');
+
+//     if (razorpay_signature !== expectedSign) {
+//       return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+//     }
+
+//     // Update booking payment status
+//     if (bookingId) {
+//       await Booking.findByIdAndUpdate(bookingId, {
+//         paymentStatus: 'paid',
+//         paymentId: razorpay_payment_id,
+//         orderId: razorpay_order_id,
+//       });
+//     }
+
+//     res.json({ success: true, paymentId: razorpay_payment_id });
+//   } catch (err) {
+//     res.status(500).json({ message: 'Verification failed', error: err.message });
+//   }
+// });
+
 router.post('/verify', auth, async (req, res) => {
   try {
-    console.log('Verify called:', req.body);
     const {
       razorpay_order_id,
       razorpay_payment_id,
@@ -43,18 +78,22 @@ router.post('/verify', auth, async (req, res) => {
       bookingId,
     } = req.body;
 
-    // Verify signature
     const sign = razorpay_order_id + '|' + razorpay_payment_id;
     const expectedSign = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(sign)
       .toString('hex');
 
+    // ✅ Add these logs
+    console.log('Received signature:', razorpay_signature);
+    console.log('Expected signature:', expectedSign);
+    console.log('SECRET used (first 6):', process.env.RAZORPAY_KEY_SECRET?.substring(0, 6));
+
     if (razorpay_signature !== expectedSign) {
+      console.error('SIGNATURE MISMATCH');
       return res.status(400).json({ success: false, message: 'Invalid payment signature' });
     }
 
-    // Update booking payment status
     if (bookingId) {
       await Booking.findByIdAndUpdate(bookingId, {
         paymentStatus: 'paid',
@@ -65,6 +104,7 @@ router.post('/verify', auth, async (req, res) => {
 
     res.json({ success: true, paymentId: razorpay_payment_id });
   } catch (err) {
+    console.error('Verify error:', err.message);
     res.status(500).json({ message: 'Verification failed', error: err.message });
   }
 });
