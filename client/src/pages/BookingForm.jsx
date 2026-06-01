@@ -35,6 +35,18 @@ export default function BookingForm() {
     setLoading(true);
 
     try {
+      // Verify Razorpay script loaded
+      if (!window.Razorpay) {
+        throw new Error('Razorpay payment gateway is not available. Please refresh the page.');
+      }
+
+      // Verify Razorpay key is configured
+      const razorpayKey = process.env.REACT_APP_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        throw new Error('Payment configuration is missing. Please contact support.');
+      }
+
+      console.log('🔵 Step 1: Creating booking...');
       // Step 1 — Create booking in DB (paymentStatus: pending)
       const bookingRes = await bookingAPI.create({
         ...form,
@@ -42,16 +54,23 @@ export default function BookingForm() {
         serviceCategory: tech.serviceCategory,
       });
       const booking = bookingRes.data;
+      console.log('✅ Booking created:', booking._id);
 
+      console.log('🔵 Step 2: Creating Razorpay order...');
       // Step 2 — Create Razorpay order on backend
       const orderRes = await paymentAPI.createOrder({
         amount: tech.hourlyRate,
         bookingId: booking._id,
       });
 
+      if (!orderRes.data?.order?.id) {
+        throw new Error('Failed to create payment order. Please try again.');
+      }
+      console.log('✅ Order created:', orderRes.data.order.id);
+
       // Step 3 — Open Razorpay popup
       const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY_ID,
+        key: razorpayKey,
         amount: orderRes.data.order.amount,
         currency: 'INR',
         name: 'HomeFix',
@@ -60,6 +79,7 @@ export default function BookingForm() {
 
         handler: async (response) => {
           try {
+            console.log('🔵 Step 3: Verifying payment...');
             // Step 4 — Verify payment signature on backend
             await paymentAPI.verify({
               razorpay_order_id: response.razorpay_order_id,
@@ -67,9 +87,11 @@ export default function BookingForm() {
               razorpay_signature: response.razorpay_signature,
               bookingId: booking._id,
             });
+            console.log('✅ Payment verified successfully');
             setLoading(false); 
             setSuccess(true);
-          } catch {
+          } catch (err) {
+            console.error('❌ Payment verification error:', err);
             setLoading(false);
             alert('Payment verification failed. Please contact support.');
           }
@@ -81,17 +103,20 @@ export default function BookingForm() {
         theme: { color: '#FF5C35' },
         modal: {
           ondismiss: () => {
+            console.log('⚠️ Payment cancelled by user');
             setLoading(false);
             alert('Payment cancelled. Your booking is saved but unpaid.');
           },
         },
       };
 
+      console.log('🔵 Step 4: Opening Razorpay popup...');
       const rzp = new window.Razorpay(options);
       rzp.open();
 
     } catch (err) {
-      alert(err.response?.data?.message || 'Booking failed. Please try again.');
+      console.error('❌ Payment error:', err);
+      alert(err.response?.data?.message || err.message || 'Booking failed. Please try again.');
       setLoading(false);
     }
   };

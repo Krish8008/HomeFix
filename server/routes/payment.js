@@ -1,76 +1,66 @@
-const express = require('express');
-const router = express.Router();
-const Razorpay = require('razorpay');
-const crypto = require('crypto');
-const Booking = require('../models/Booking');
-const { auth } = require('../middleware/auth');
-
-
 // Create Razorpay order
 router.post('/create-order', auth, async (req, res) => {
   try {
-    console.log('KEY_ID:', process.env.RAZORPAY_KEY_ID);      // ✅ add
-    console.log('SECRET exists:', !!process.env.RAZORPAY_KEY_SECRET); // ✅ add
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+      console.error('❌ Razorpay credentials missing');
+      return res.status(500).json({ 
+        success: false,
+        message: 'Payment gateway not configured. Please contact support.' 
+      });
+    }
+
+    console.log('🔵 Creating Razorpay order with key:', keyId.substring(0, 10) + '...');
 
     const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
+      key_id: keyId,
+      key_secret: keySecret,
     });
 
     const { amount, bookingId } = req.body;
-    console.log('Creating order for amount:', amount); // ✅ add
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid amount specified' 
+      });
+    }
+
+    console.log('💰 Creating order for amount:', amount, 'INR');
 
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: 'INR',
       receipt: `booking_${bookingId || Date.now()}`,
     });
+
+    console.log('✅ Order created:', order.id);
     res.json({ success: true, order });
   } catch (err) {
-    console.log('Order error:', err.message); // ✅ add
-    res.status(500).json({ message: 'Order creation failed', error: err.message });
+    console.error('❌ Order creation error:', err.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Order creation failed. Please try again.',
+      error: err.message 
+    });
   }
 });
 
 // Verify payment and update booking
-// router.post('/verify', auth, async (req, res) => {
-//   try {
-//     console.log('Verify called:', req.body);
-//     const {
-//       razorpay_order_id,
-//       razorpay_payment_id,
-//       razorpay_signature,
-//       bookingId,
-//     } = req.body;
-
-//     // Verify signature
-//     const sign = razorpay_order_id + '|' + razorpay_payment_id;
-//     const expectedSign = crypto
-//       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-//       .update(sign)
-//       .toString('hex');
-
-//     if (razorpay_signature !== expectedSign) {
-//       return res.status(400).json({ success: false, message: 'Invalid payment signature' });
-//     }
-
-//     // Update booking payment status
-//     if (bookingId) {
-//       await Booking.findByIdAndUpdate(bookingId, {
-//         paymentStatus: 'paid',
-//         paymentId: razorpay_payment_id,
-//         orderId: razorpay_order_id,
-//       });
-//     }
-
-//     res.json({ success: true, paymentId: razorpay_payment_id });
-//   } catch (err) {
-//     res.status(500).json({ message: 'Verification failed', error: err.message });
-//   }
-// });
-
 router.post('/verify', auth, async (req, res) => {
   try {
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    
+    if (!keySecret) {
+      console.error('❌ RAZORPAY_KEY_SECRET not configured');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Payment verification not available' 
+      });
+    }
+
     const {
       razorpay_order_id,
       razorpay_payment_id,
@@ -78,34 +68,63 @@ router.post('/verify', auth, async (req, res) => {
       bookingId,
     } = req.body;
 
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing payment details' 
+      });
+    }
+
+    console.log('🔵 Verifying payment:', razorpay_payment_id);
+
     const sign = razorpay_order_id + '|' + razorpay_payment_id;
     const expectedSign = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .createHmac('sha256', keySecret)
       .update(sign)
       .toString('hex');
 
-    // ✅ Add these logs
-    console.log('Received signature:', razorpay_signature);
-    console.log('Expected signature:', expectedSign);
-    console.log('SECRET used (first 6):', process.env.RAZORPAY_KEY_SECRET?.substring(0, 6));
+    console.log('📊 Signature verification:', {
+      received: razorpay_signature.substring(0, 10) + '...',
+      expected: expectedSign.substring(0, 10) + '...',
+      match: razorpay_signature === expectedSign,
+    });
 
     if (razorpay_signature !== expectedSign) {
-      console.error('SIGNATURE MISMATCH');
-      return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+      console.error('❌ SIGNATURE MISMATCH - Payment verification failed');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid payment signature. Payment verification failed.' 
+      });
     }
 
+    console.log('✅ Signature verified successfully');
+
     if (bookingId) {
-      await Booking.findByIdAndUpdate(bookingId, {
+      const booking = await Booking.findByIdAndUpdate(bookingId, {
         paymentStatus: 'paid',
         paymentId: razorpay_payment_id,
         orderId: razorpay_order_id,
-      });
+        status: 'confirmed',
+      }, { new: true });
+
+      if (!booking) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Booking not found' 
+        });
+      }
+
+      console.log('✅ Booking status updated to paid and confirmed');
     }
 
     res.json({ success: true, paymentId: razorpay_payment_id });
   } catch (err) {
-    console.error('Verify error:', err.message);
-    res.status(500).json({ message: 'Verification failed', error: err.message });
+    console.error('❌ Verify error:', err.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Verification failed. Please contact support.',
+      error: err.message 
+    });
   }
 });
 
