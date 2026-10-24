@@ -4,9 +4,7 @@ const Razorpay = require("razorpay");
 const crypto = require("crypto");
 
 const Booking = require("../models/Booking");
-
-// Middleware
-const auth = require("../middleware/auth");
+const { auth } = require("../middleware/auth");
 
 // Razorpay Instance
 const razorpay = new Razorpay({

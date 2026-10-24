@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Technician = require('../models/Technician');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'homefix_secret_2024';
 
 // Register User
 router.post('/register', async (req, res) => {
